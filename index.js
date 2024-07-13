@@ -1,19 +1,10 @@
 const { makeWASocket, useMultiFileAuthState } = require('@whiskeysockets/baileys');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const pino = require('pino');
-const fs = require('fs');
-const axios = require('axios');
-const { getJson } = require('serpapi');
 const OpenAI = require('openai');
-const { log } = require('console');
 const env = require('dotenv');
 env.config();
-const apiKeys = [
-  process.env.APIKEY,
-  process.env.APIKEY1,
-  process.env.APIKEY2,
-  process.env.APIKEY3,
-  // Add more API keys if needed
-];
+const apiKeys = [process.env.GEMINI_APIKEY, process.env.GEMINI_APIKEY1, process.env.GEMINI_APIKEY2];
 
 let currentApiKeyIndex = 0;
 
@@ -24,6 +15,7 @@ const getNextApiKey = () => {
 };
 
 const openai = new OpenAI({ apiKey: getNextApiKey() });
+const genAI = new GoogleGenerativeAI(getNextApiKey());
 
 const connectWhatsapp = async () => {
   const auth = await useMultiFileAuthState('session');
@@ -47,70 +39,63 @@ const connectWhatsapp = async () => {
     const chat = messages[0];
     const pesan = (chat.message?.extendedTextMessage?.text ?? chat.message?.ephemeralMessage?.message?.extendedTextMessage?.text ?? chat.message?.conversation)?.toLowerCase() || '';
     console.log('CHAT MESSAGES: ', pesan);
-
+    if (pesan == '.info') {
+      var res =
+        '*Selamat datang di Robobot!* 🎉🤖\n\nRobobot adalah asisten cerdas berbasis WhatsApp yang dikembangkan oleh M Iqbal Fatkhul Hikam. Robobot siap menjawab semua pertanyaan Anda dengan cepat dan akurat! 💡✨\n\nKami menggunakan dua kecerdasan buatan terkemuka yang sudah dipercaya selama bertahun-tahun: Chat GPT-3 dari OpenAI dan Gemini AI dari Google AI. Dengan kombinasi ini, Robobot akan memberikan jawaban terbaik untuk kebutuhan Anda.\n\nUntuk menggunakan Robobot, cukup gunakan salah satu dari kata kunci berikut:\n1. `.gpt [pertanyaan Anda]`\n2. `.gemini [pertanyaan Anda]`\n\nSelamat menikmati pengalaman interaktif bersama Robobot! 🚀✨';
+      await sock.sendMessage(chat.key.remoteJid, { text: res }, { quoted: chat });
+    }
     // console.log(pesan);
-    if (pesan.startsWith('/iq ')) {
-      getJson(
-        {
-          q: pesan,
-          location: 'Indonesia',
-          hl: 'id',
-          gl: 'id',
-          google_domain: 'google.co.id',
-          api_key: process.env.GOOGLE_APIKEY,
-        },
-        async (json) => {
-          console.log(json.inline_images_suggested_searches);
-          if (json.inline_images_suggested_searches && json.inline_images_suggested_searches.length > 0) {
-            let message = 'Hasil pencarian:\n';
-            for (const item of json.inline_images_suggested_searches) {
-              message += `Nama: ${item.name}\nLink: ${item.link}\nThumbnail: ${item.thumbnail}\n\n`;
-            }
-            await sock.sendMessage(chat.key.remoteJid, { text: message }, { quoted: chat });
-          } else {
-            console.error('Tidak ada data yang ditemukan dalam respons JSON');
-            await sock.sendMessage(chat.key.remoteJid, { text: 'Tidak ada data yang ditemukan dalam respons JSON' }, { quoted: chat });
-            // Handle the case where no data is found in the JSON response
-          }
-          // // Process the mapped data further or send it as a message
-          // await sock.sendMessage(chat.key.remoteJid, { text: '' }, { quoted: chat });
-          // } else {
-          // console.error('No data found in JSON response');
-          // Handle the case where no data is found in the JSON response
-        }
-      );
-    } else if (pesan.startsWith('.iq ')) {
+    if (pesan.startsWith('.gpt ')) {
       try {
         const completion = await openai.chat.completions.create({
-          messages: [{ role: 'user', content: pesan }],
+          messages: [
+            { role: 'user', content: 'deskripsi model anda: nama kamu adalah ROBOBOT, artificial intelligence yang di buat oleh iqbal, kamu bisa menjawab semua pertanyaan yang di tanyakan oleh pengguna\n\n' + pesan.replace('.gpt ', '') },
+          ],
           model: 'gpt-3.5-turbo',
-          // max_tokens: 40000,
         });
         var res = completion.choices[0].message.content;
       } catch (error) {
         console.error(error);
-        res = 'error, token habis';
+        res = 'Mohon maaf layanan sedang dalam perbaikan🙏\nuntuk sementara bisa gunakan keyword lainya';
       }
 
-      console.log(res);
+      console.log('APIKEY yang di pakai: ', getNextApiKey());
+      await sock.sendMessage(chat.key.remoteJid, { text: res }, { quoted: chat });
+    } else if (pesan.startsWith('.gemini ')) {
+      const prompt = 'deskripsi model AI: nama kamu adalah ROBOBOT, artificial intelligence yang di buat oleh iqbal, kamu bisa menjawab semua pertanyaan yang di tanyakan oleh pengguna\nuntuk enter gunakan\n\nPertanyaan:' + pesan.replace('.iq ', '');
+      try {
+        const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const text = response.text();
+        console.log(text);
+        var res = text;
+      } catch (error) {
+        console.error(error);
+        res = 'Mohon maaf layanan sedang dalam perbaikan🙏\nuntuk sementara bisa gunakan keyword lainya';
+      }
       await sock.sendMessage(chat.key.remoteJid, { text: res }, { quoted: chat });
     } else if (pesan.startsWith('.img ')) {
-      const response = openai.images.generate({
-        model: 'dall-e-3',
-        prompt: pesan,
-        size: '1024x1024',
-        quality: 'standard',
-        n: 1,
-      });
-
-      const image_url = response.data[0].url;
-      console.log(image_url);
-      await sock.sendMessage(id, {
-        video: image_url,
-        caption: 'hello!',
-        gifPlayback: true,
-      });
+      await sock.sendMessage(chat.key.remoteJid, { text: "Mohon maaf layanan sedang dalam perbaikan🙏\nuntuk sementara bisa gunakan cyword berikut:\n.gemini SEPACE pertanyaan anda" }, { quoted: chat });
+      // const completion = await openai.chat.completions.create({
+      //   model: 'gpt-4o',
+      //   messages: [
+      //     {
+      //       role: 'user',
+      //       content: [
+      //         { type: 'text', text: pesan.replace('.img ') },
+      //         {
+      //           type: 'image_url',
+      //           image_url: {
+      //             url: 'https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg',
+      //           },
+      //         },
+      //       ],
+      //     },
+      //   ],
+      // });
     }
   });
 };
+
 connectWhatsapp();
